@@ -6,14 +6,13 @@ import math
 
 def __descriptor_help(image, ksize, pts, p):
     out = []
+    if p[0] - 48 < 0 or p[0] + 48 >= image.shape[1] or p[1] - 51 < 0 or p[1] + 51 >= image.shape[0]:
+        return -1
+
     for pt in pts:
-        if pt[0] + p[0] - ksize < 0 or pt[0] + p[0] + ksize >= image.shape[1] or \
-                pt[1] + p[1] - ksize < 0 or pt[1] + p[1] + ksize >= image.shape[0]:
-            return -1
-        else:
-            src = image[pt[1] + p[1] - ksize:pt[1] + p[1] + ksize + 1, pt[0] + p[0] - ksize:pt[0] + p[0] + ksize + 1]
-            gauss = cv2.GaussianBlur(src, (2*ksize + 1, 2*ksize + 1), 2, borderType=cv2.BORDER_CONSTANT)
-            out.append(gauss[ksize, ksize])
+        src = image[pt[1] + p[1] - ksize:pt[1] + p[1] + ksize + 1, pt[0] + p[0] - ksize:pt[0] + p[0] + ksize + 1]
+        gauss = cv2.GaussianBlur(src, (2*ksize + 1, 2*ksize + 1), 2, borderType=cv2.BORDER_CONSTANT)
+        out.append(gauss[ksize, ksize])
 
     return out
 
@@ -56,14 +55,7 @@ def __calculate_intensities(image, pts, p):
     return intensities
 
 
-# def reduce_keypoints(image, kp):
-#     new_kp = []
-#     for i in range(len(kp)):
-#         p = [int(kp[i].pt[0]), int(kp[i].pt[1])]
-
-
 def select_pairs(images, keypoints_arr, corr_thresh):
-
     descriptors = []
     sums = np.array([0 for i in range(903)], dtype='int64')
     new_kps = [[] for i in range(10)]
@@ -84,6 +76,7 @@ def select_pairs(images, keypoints_arr, corr_thresh):
 
             # Calculate intensities from the sampling pattern
             intensities = __calculate_intensities(image, pts, p)
+
             if isinstance(intensities, int) and intensities == -1:
                 continue
 
@@ -164,23 +157,16 @@ def compute_descriptor(descriptors, mask):
     for i in range(len(descriptors)):
         descriptors[i] = descriptors[i][mask]
 
-    des = np.zeros((len(descriptors), 64))
-    for i in range(len(descriptors)):
-        for j in range(64):
-            out = 0
-            for bit in descriptors[i, 8*j:8*(j+1)]:
-                out = (out << 1) | bit
-            des[i, j] = out
+    descriptors = np.packbits(descriptors, axis=-1)
 
-
-    return des
+    return descriptors[:512]
 
 
 def stitch_images(images, descriptor_func):
     orb_obj = cv2.ORB_create()
     kps = [None, None]
     image1 = images[5]
-    for i in range(6, 9):
+    for i in range(6, 10):
         image2 = images[i]
 
         kps[0] = orb_obj.detect(image2, None)
@@ -195,6 +181,7 @@ def stitch_images(images, descriptor_func):
         corner1 = np.matmul(H, np.array([image2.shape[1], 0, 1]))
         corner2 = np.matmul(H, np.array([image2.shape[1], image2.shape[0], 1]))
         min_x = min(corner1[0] / corner1[2], corner2[0] / corner2[2])
+        min_x = max(min_x, image1.shape[1])
 
         image_result = cv2.warpPerspective(image2, H, (int(min_x), image1.shape[0]))
         # plt.subplot(121)
@@ -225,11 +212,12 @@ def stitch_images(images, descriptor_func):
         min_x = -max(corner1[0] / corner1[2], corner2[0] / corner2[2])
 
         # Perform transformations
-        T = np.float32([[1, 0, min_x], [0, 1, 0], [0, 0, 1]])
-        # Translate image to the right to avoid being cropped
-        image_translated = cv2.warpPerspective(image2, T, (image1.shape[1] + int(min_x), image1.shape[0]))
+        if min_x > 0:
+            T = np.float32([[1, 0, min_x], [0, 1, 0], [0, 0, 1]])
+            # Translate image to the right to avoid being cropped
+            image2 = cv2.warpPerspective(image2, T, (image1.shape[1] + int(min_x), image1.shape[0]))
 
-        image_result = cv2.warpPerspective(image_translated, H, (image1.shape[1] + int(min_x), image1.shape[0]))
+        image_result = cv2.warpPerspective(image2, H, (image1.shape[1] + int(min_x), image1.shape[0]))
         # plt.subplot(121)
         # plt.imshow(image1)
         # plt.subplot(122)
@@ -246,16 +234,19 @@ def stitch_images(images, descriptor_func):
 
 def FREAK_compute_and_match(images, kps, timed):
     des_time = 0
+
     start = time.perf_counter()
     large_des, mask, kps = select_pairs(images, kps, 0.2)
     end = time.perf_counter()
     if timed:
         print(f"FREAK select pairs training time: {end - start:0.4f} seconds")
 
-
+    # freak_obj = cv2.xfeatures2d.FREAK_create()
     start = time.perf_counter()
     descriptors1 = compute_descriptor(large_des[:len(kps[0]), :], mask)
     descriptors2 = compute_descriptor(large_des[len(kps[0]):len(kps[0]) + len(kps[1]), :], mask)
+    # kps[0], descriptors1 = freak_obj.compute(images[0], kps[0])
+    # kps[1], descriptors2 = freak_obj.compute(images[1], kps[1])
     end = time.perf_counter()
     if timed:
         print(f"FREAK description time: {end - start:0.4f} seconds\n")
