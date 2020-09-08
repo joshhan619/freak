@@ -12,7 +12,7 @@ three different keypoint descriptor methods: FREAK, SIFT, and BRISK. The results
 
 2. Panoramic Image Construction: Panoramas are constructed using FREAK, SIFT and BRISK keypoint descriptors. Their timings are recorded and compared.
 
-1. A. Alahi, R. Ortiz, and P. Vandergheynst. FREAK: Fast Retina Keypoint. In IEEE Conference on Computer Vision and Pattern
+A. Alahi, R. Ortiz, and P. Vandergheynst. FREAK: Fast Retina Keypoint. In IEEE Conference on Computer Vision and Pattern
 Recognition, 2012. Alexandre Alahi, Raphael Ortiz, Kirell Benzi, Pierre Vandergheynst
 Ecole Polytechnique Federale de Lausanne (EPFL), Switzerland
 
